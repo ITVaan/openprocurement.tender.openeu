@@ -2432,11 +2432,188 @@ class TenderBidDocumentResourceTest(BaseTenderContentWebTest):
         self.assertEqual(response.json['errors'][0]["description"], "Can't add document because award of bid is not in pending or active state")
 
 
+class TenderBidDryRunTest(BaseTenderContentWebTest):
+    initial_status = 'active.tendering'
+    initial_auth = ('Basic', ('broker', ''))
+
+    def test_dry_run_create_tender_biddder_invalid(self):
+        response = self.app.post_json('/tenders/some_id/bids?dry_run=1', {
+                                      'data': {'tenderers': test_bids[0]['tenderers'], "value": {"amount": 500}}}, status=404)
+        self.assertEqual(response.status, '404 Not Found')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u'Not Found', u'location':
+                u'url', u'name': u'tender_id'}
+        ])
+
+        request_path = '/tenders/{}/bids'.format(self.tender_id)
+        response = self.app.post(request_path, 'data', status=415)
+        self.assertEqual(response.status, '415 Unsupported Media Type')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description':
+                u"Content-Type header should be one of ['application/json']", u'location': u'header', u'name': u'Content-Type'}
+        ])
+
+        response = self.app.post(
+            request_path, 'data', content_type='application/json', status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u'No JSON object could be decoded',
+                u'location': u'body', u'name': u'data'}
+        ])
+
+        response = self.app.post_json(request_path, 'data', status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u'Data not available',
+                u'location': u'body', u'name': u'data'}
+        ])
+
+        response = self.app.post_json(
+            request_path, {'not_data': {}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u'Data not available',
+                u'location': u'body', u'name': u'data'}
+        ])
+
+        response = self.app.post_json(request_path, {'data': {
+                                      'invalid_field': 'invalid_value'}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u'Rogue field', u'location':
+                u'body', u'name': u'invalid_field'}
+        ])
+
+        response = self.app.post_json(request_path, {
+                                      'data': {'tenderers': [{'identifier': 'invalid_value'}]}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': {u'identifier': [
+                u'Please use a mapping for this field or Identifier instance instead of unicode.']}, u'location': u'body', u'name': u'tenderers'}
+        ])
+
+        response = self.app.post_json(request_path, {
+                                      'data': {'tenderers': [{'identifier': {}}]}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': [u'This field is required.'], u'location': u'body', u'name': u'selfEligible'},
+            {u'description': [u'This field is required.'], u'location': u'body', u'name': u'selfQualified'},
+            {u'description': [
+                {u'contactPoint': [u'This field is required.'], u'identifier': {u'scheme': [u'This field is required.'], u'id': [u'This field is required.']},
+                 u'name': [u'This field is required.'],
+                 u'address': [u'This field is required.']}
+            ], u'location': u'body', u'name': u'tenderers'}
+        ])
+
+        response = self.app.post_json(request_path, {'data': {'selfEligible': False, 'tenderers': [{
+            'name': 'name', 'identifier': {'uri': 'invalid_value'}}]}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'],[
+            {u'description': [u'Value must be one of [True].'], u'location': u'body', u'name': u'selfEligible'},
+            {u'description': [u'This field is required.'], u'location': u'body', u'name': u'selfQualified'},
+            {u'description': [{
+                u'contactPoint': [u'This field is required.'],
+                u'identifier': {u'scheme': [u'This field is required.'],
+                                u'id': [u'This field is required.'],
+                                u'uri': [u'Not a well formed URL.']},
+                u'address': [u'This field is required.']}],
+                u'location': u'body', u'name': u'tenderers'}
+        ])
+
+
+        response = self.app.post_json(request_path, {'data': {'selfEligible': True, 'selfQualified': True,
+                                                              'tenderers': test_bids[0]['tenderers']}}, status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': [u'This field is required.'], u'location': u'body', u'name': u'value'}
+        ])
+
+        response = self.app.post_json(request_path, {'data': {'selfEligible': True, 'selfQualified': True,
+                                                              'tenderers': test_bids[0]['tenderers'],
+                                                              "value": {"amount": 500, 'valueAddedTaxIncluded': False}}},
+                                      status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': [u'valueAddedTaxIncluded of bid should be identical to valueAddedTaxIncluded of value of tender'], u'location': u'body', u'name': u'value'}
+        ])
+
+        response = self.app.post_json(request_path, {'data': {'selfEligible': True, 'selfQualified': True,
+                                                              'tenderers': test_bids[0]['tenderers'],
+                                                              "value": {"amount": 500, 'currency': "USD"}}},
+                                      status=422)
+        self.assertEqual(response.status, '422 Unprocessable Entity')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+
+        self.assertEqual(response.json['errors'], [
+            {u'description': [u'currency of bid should be identical to currency of value of tender'], u'location': u'body', u'name': u'value'},
+        ])
+
+    def test_dry_run_create_tender_bidder(self):
+        response = self.app.post_json('/tenders/{}/bids?dry_run=1'.format(
+            self.tender_id), {'data': {'selfEligible': True, 'selfQualified': True,
+                                       'tenderers': test_bids[0]['tenderers'], "value": {"amount": 500}}})
+        self.assertEqual(response.status, '201 Created')
+        self.assertEqual(response.content_type, 'application/json')
+        bid = response.json['data']
+        self.assertEqual(bid['tenderers'][0]['name'], test_bids[0]['tenderers'][0]['name'])
+        self.assertIn('id', bid)
+        self.assertIn(bid['id'], response.headers['Location'])
+
+        response = self.app.get('/tenders/{}/bids/{}'.format(self.tender_id, bid['id']), status=404)
+        self.assertEqual(response.status, '404 Not Found')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['status'], 'error')
+        self.assertEqual(response.json['errors'], [
+            {u'description': u"Not Found", u'location': u'url', u'name': u'bid_id'}
+        ])
+
+        for status in ('active', 'unsuccessful', 'deleted', 'invalid'):
+            response = self.app.post_json('/tenders/{}/bids?dry_run=1'.format(self.tender_id),
+                                          {'data': {'selfEligible': True, 'selfQualified': True,
+                                                    'tenderers': test_bids[0]['tenderers'],
+                                                    'value': {"amount": 500},
+                                                    'status': status}}, status=403)
+            self.assertEqual(response.status, '403 Forbidden')
+
+        self.set_status('complete')
+
+        response = self.app.post_json('/tenders/{}/bids?dry_run=1'.format(
+            self.tender_id), {'data': {'selfEligible': True, 'selfQualified': True,
+                                       'tenderers': test_bids[0]['tenderers'], "value": {"amount": 500}}}, status=403)
+        self.assertEqual(response.status, '403 Forbidden')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.json['errors'][0]["description"], "Can't add bid in current (complete) tender status")
+
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(TenderBidDocumentResourceTest))
     suite.addTest(unittest.makeSuite(TenderBidFeaturesResourceTest))
     suite.addTest(unittest.makeSuite(TenderBidResourceTest))
+    suite.addTest(unittest.makeSuite(TenderBidDryRunTest))
     return suite
 
 
